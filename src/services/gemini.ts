@@ -93,31 +93,52 @@ export async function sendMessage(chat: ChatSession, text: string, attachment?: 
     });
   }
 
-  try {
-    const parts: Part[] = [];
-    if (attachment) {
-      const base64Image = await fileToBase64(attachment);
-      parts.push({
-        inlineData: {
-          data: base64Image.split(',')[1],
-          mimeType: attachment.type
-        }
-      });
-    }
-    
-    if (text) {
-      parts.push({ text });
-    }
-
-    const result = await chat.sendMessage(parts);
-    
-    if (result.response.promptFeedback?.blockReason) {
-      throw new Error(`Blocked by safety settings: ${result.response.promptFeedback.blockReason}`);
-    }
-
-    return result.response.text();
-  } catch (error: any) {
-    console.error("Gemini Error:", error);
-    throw new Error(error.message || "Failed to communicate with AI");
+  const parts: Part[] = [];
+  if (attachment) {
+    const base64Image = await fileToBase64(attachment);
+    parts.push({
+      inlineData: {
+        data: base64Image.split(',')[1],
+        mimeType: attachment.type
+      }
+    });
   }
+  
+  if (text) {
+    parts.push({ text });
+  }
+
+  let retries = 3;
+  let delay = 1500;
+
+  while (retries > 0) {
+    try {
+      const result = await chat.sendMessage(parts);
+      
+      if (result.response.promptFeedback?.blockReason) {
+        throw new Error(`Blocked by safety settings: ${result.response.promptFeedback.blockReason}`);
+      }
+
+      return result.response.text();
+    } catch (error: any) {
+      console.error(`Gemini Error (Retries left: ${retries - 1}):`, error);
+      
+      const is503 = error.message?.includes("503") || error.status === 503;
+      if (is503 && retries > 1) {
+        retries--;
+        await new Promise(res => setTimeout(res, delay));
+        delay *= 2; // Exponential backoff
+        continue;
+      }
+      
+      // If it's a 503 but we are out of retries, throw a friendly error
+      if (is503) {
+        throw new Error("The AI is currently experiencing very high demand. Please try again in a few moments.");
+      }
+      
+      throw new Error(error.message || "Failed to communicate with AI");
+    }
+  }
+  
+  throw new Error("Service unavailable. Please try again later.");
 }
