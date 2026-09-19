@@ -61,12 +61,17 @@ function App() {
     };
     
     await saveConversation(newConv);
+    
+    // Set synchronous context for immediate use
+    const newSession = startConversation(language, newConv.messages);
+    chatSessionRef.current = newSession;
+    setCurrentConversation(newConv);
     setActiveConversationId(newConv.id);
     setAppState('chat');
 
     // If there's an initial attachment (from Upload/Camera), send it immediately
     if (initialAttachment) {
-      handleSendMessage("Can you explain this document for me?", initialAttachment);
+      handleSendMessage("Can you explain this document for me?", initialAttachment, newConv, newSession);
     } else if (sourceType === 'check') {
       // Add an initial greeting message for 'check'
       const checkConv = { ...newConv };
@@ -88,6 +93,9 @@ function App() {
         fileInputRef.current.removeAttribute('capture');
         if (sourceType === 'camera') {
           fileInputRef.current.setAttribute('capture', 'environment');
+          fileInputRef.current.setAttribute('accept', 'image/*');
+        } else {
+          fileInputRef.current.setAttribute('accept', 'image/*,.pdf,.doc,.docx,.txt');
         }
         fileInputRef.current.click();
       }
@@ -105,8 +113,11 @@ function App() {
     if (fileInputRef.current) fileInputRef.current.value = ""; // Reset
   };
 
-  const handleSendMessage = async (text: string, file?: File) => {
-    if (!currentConversation || !chatSessionRef.current) return;
+  const handleSendMessage = async (text: string, file?: File, convToUse?: Conversation, sessionToUse?: ChatSession) => {
+    const conv = convToUse || currentConversation;
+    const session = sessionToUse || chatSessionRef.current;
+    
+    if (!conv || !session) return;
 
     // 1. Add User Message
     const userMsg: Message = {
@@ -117,7 +128,7 @@ function App() {
       createdAt: Date.now()
     };
 
-    let updatedConv = { ...currentConversation };
+    let updatedConv = { ...conv };
     updatedConv.messages = [...updatedConv.messages, userMsg];
     
     // Auto-generate title if first user message
@@ -131,7 +142,7 @@ function App() {
     // 2. Call AI
     setIsLoading(true);
     try {
-      const responseText = await sendMessage(chatSessionRef.current, text, file);
+      const responseText = await sendMessage(session, text, file);
       
       const modelMsg: Message = {
         id: generateId(),
