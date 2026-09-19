@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, getDocs, getDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import { collection, doc, setDoc, getDocs, getDoc, deleteDoc, query, orderBy, where } from "firebase/firestore";
 import { db } from "./firebase";
 
 export interface Message {
@@ -12,6 +12,7 @@ export interface Message {
 
 export interface Conversation {
   id: string;
+  userId: string;
   title: string;
   sourceType: 'write' | 'upload' | 'camera' | 'check';
   language: string;
@@ -24,9 +25,14 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
-export async function getConversations(): Promise<Conversation[]> {
+export async function getConversations(userId: string): Promise<Conversation[]> {
+  if (!userId) return [];
   try {
-    const q = query(collection(db, "conversations"), orderBy("updatedAt", "desc"));
+    const q = query(
+      collection(db, "conversations"), 
+      where("userId", "==", userId),
+      orderBy("updatedAt", "desc")
+    );
     const querySnapshot = await getDocs(q);
     const conversations: Conversation[] = [];
     querySnapshot.forEach((doc) => {
@@ -54,6 +60,7 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 }
 
 export async function saveConversation(conversation: Conversation): Promise<void> {
+  if (!conversation.userId) return; // Prevent saving orphaned data
   try {
     conversation.updatedAt = Date.now();
     await setDoc(doc(db, "conversations", conversation.id), conversation);

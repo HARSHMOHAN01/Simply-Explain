@@ -1,24 +1,32 @@
 import React, { useEffect, useState } from 'react';
 import { getConversations, deleteConversation } from '../services/history';
 import type { Conversation } from '../services/history';
+import type { User } from 'firebase/auth';
 
 interface HistoryProps {
   onSelectConversation: (id: string) => void;
   onHome: () => void;
+  user: User | null;
 }
 
-export default function History({ onSelectConversation, onHome }: HistoryProps) {
+export default function History({ onSelectConversation, onHome, user }: HistoryProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
   useEffect(() => {
-    getConversations().then(data => setConversations(data));
-  }, []);
+    if (user) {
+      getConversations(user.uid).then(data => setConversations(data));
+    } else {
+      setConversations([]);
+    }
+  }, [user]);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (confirm("Are you sure you want to delete this conversation?")) {
       await deleteConversation(id);
-      getConversations().then(data => setConversations(data));
+      if (user) {
+        getConversations(user.uid).then(data => setConversations(data));
+      }
     }
   };
 

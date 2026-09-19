@@ -5,6 +5,9 @@ import { generateId, getConversation, saveConversation } from './services/histor
 import type { Conversation, Message } from './services/history';
 import { startConversation, sendMessage } from './services/gemini';
 import type { ChatSession } from './services/gemini';
+import { auth, signInWithGoogle, logOut } from './services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 
 // Lazy loaded components for code splitting
 const Home = lazy(() => import('./components/Home'));
@@ -25,6 +28,14 @@ function App() {
   const chatSessionRef = useRef<ChatSession | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingSourceType, setPendingSourceType] = useState<'upload' | 'camera' | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Load active conversation when ID changes
   useEffect(() => {
@@ -50,8 +61,20 @@ function App() {
   };
 
   const createNewConversation = async (sourceType: 'write' | 'upload' | 'camera' | 'check', initialAttachment?: File) => {
+    if (!user) {
+      alert("Please sign in first to save your conversation.");
+      try {
+        await signInWithGoogle();
+        // Return early so user can click again, or we could continue the flow
+        return;
+      } catch (e) {
+        return;
+      }
+    }
+
     const newConv: Conversation = {
       id: generateId(),
+      userId: user.uid,
       title: "New Conversation", // Could generate dynamically based on first message later
       sourceType,
       language,
@@ -190,6 +213,9 @@ function App() {
           onNavClick={handleNavClick} 
           language={language} 
           onLanguageChange={setLanguage} 
+          user={user}
+          onLogin={signInWithGoogle}
+          onLogout={logOut}
         />
       </div>
       
@@ -210,6 +236,7 @@ function App() {
                 setAppState('chat');
               }}
               onHome={() => handleNavClick('home')}
+              user={user}
             />
           )}
 
