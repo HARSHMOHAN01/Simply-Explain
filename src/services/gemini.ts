@@ -94,17 +94,26 @@ export async function explainContent(content: string | File, language: string): 
 
   try {
     const result = await model.generateContent(requestParts);
+    
+    // Check if the response was blocked by safety settings
+    if (result.response.promptFeedback?.blockReason) {
+      throw new Error(`Blocked by safety settings: ${result.response.promptFeedback.blockReason}`);
+    }
+
     const responseText = result.response.text();
-    const parsedResponse = JSON.parse(responseText);
+    // Sometimes the model still outputs markdown blocks even with responseMimeType
+    const cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+    
+    const parsedResponse = JSON.parse(cleanText);
     
     return {
       summary: parsedResponse.summary || "Explanation could not be generated.",
       actions: parsedResponse.actions || [],
       important: parsedResponse.important || ""
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Error:", error);
-    throw new Error("Failed to generate explanation");
+    throw new Error(error.message || "Failed to generate explanation");
   }
 }
 
