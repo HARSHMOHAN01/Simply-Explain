@@ -51,23 +51,48 @@ export default function ListenButton({ textToRead, language }: ListenButtonProps
 
     // Start reading
     window.speechSynthesis.cancel(); // Clear any existing speech
-    const utterance = new SpeechSynthesisUtterance(textToRead);
-    utterance.lang = getLangCode(language);
-    utterance.rate = 0.9; // Slightly slower for seniors
     
-    utterance.onend = () => {
-      setIsReading(false);
-      setIsPaused(false);
-    };
+    // Chunk text by punctuation (sentences) to prevent cracking/cutting off on long texts
+    // This splits by ., !, ?, or newlines, keeping the punctuation attached if possible
+    const chunks = textToRead.match(/[^.!?\n]+[.!?\n]+/g) || [textToRead];
     
-    utterance.onerror = () => {
-      setIsReading(false);
-      setIsPaused(false);
+    let currentIndex = 0;
+    
+    const speakNextChunk = () => {
+      if (currentIndex >= chunks.length) {
+        setIsReading(false);
+        setIsPaused(false);
+        return;
+      }
+      
+      const textChunk = chunks[currentIndex].trim();
+      if (!textChunk) {
+        currentIndex++;
+        speakNextChunk();
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(textChunk);
+      utterance.lang = getLangCode(language);
+      utterance.rate = 0.9; // Slightly slower for seniors
+      
+      utterance.onend = () => {
+        currentIndex++;
+        speakNextChunk();
+      };
+      
+      utterance.onerror = (e) => {
+        console.error("SpeechSynthesis error:", e);
+        setIsReading(false);
+        setIsPaused(false);
+      };
+
+      window.speechSynthesis.speak(utterance);
     };
 
-    window.speechSynthesis.speak(utterance);
     setIsReading(true);
     setIsPaused(false);
+    speakNextChunk();
   };
 
   const handleStop = () => {

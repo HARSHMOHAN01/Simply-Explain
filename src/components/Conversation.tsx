@@ -20,7 +20,7 @@ export default function Conversation({ messages, language, onQuickActionClick, i
   const parseMessage = (text: string) => {
     // Extract [QuickAction: text] and clean text
     const quickActions: string[] = [];
-    const regex = /\\[QuickAction:\\s*(.+?)\\]/g;
+    const regex = /\[QuickAction:\s*(.+?)\]/g;
     let match;
     
     while ((match = regex.exec(text)) !== null) {
