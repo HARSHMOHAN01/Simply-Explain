@@ -52,7 +52,35 @@ VITE_FIREBASE_APP_ID="your_firebase_app_id"
 
 > **Note on Firebase**: You must enable **Google Sign-in** in your Firebase Authentication settings and set up **Firestore** with the proper rules to allow user-specific read/writes.
 
-### 4. Running the Development Server
+### 4. Firebase Console Setup
+
+To ensure authentication and data saving work correctly, you must configure your Firebase project:
+
+1. **Create a Firebase Project**: Go to the [Firebase Console](https://console.firebase.google.com/) and create a new project.
+2. **Add a Web App**: Register a web app in your project settings to get the Firebase config keys (put these in your `.env`).
+3. **Enable Authentication**:
+   - Go to **Authentication** -> **Sign-in method**.
+   - Enable the **Google** provider.
+   - Go to **Settings** -> **Authorized domains** and add your production domain (e.g., `your-app.vercel.app`) if you are deploying.
+4. **Set Up Firestore**:
+   - Go to **Firestore Database** and click **Create database**.
+   - Go to the **Rules** tab and replace the default rules with the following to secure user data:
+   ```javascript
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /conversations/{document=**} {
+         // Users can only read, update, or delete their own conversations
+         allow read, update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+         // Users can only create conversations attached to their own ID
+         allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+       }
+     }
+   }
+   ```
+   - Click **Publish**.
+
+### 5. Running the Development Server
 
 Because this project uses a Vercel Serverless Function (`api/chat.ts`) to securely hide the Gemini API key, you have two options for running it locally:
 
