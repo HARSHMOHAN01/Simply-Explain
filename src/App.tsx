@@ -1,14 +1,16 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import Header from './components/Header';
-import Home from './components/Home';
-import ConversationView from './components/Conversation';
-import ChatInput from './components/ChatInput';
-import HistoryView from './components/History';
 import SafetyNotice from './components/SafetyNotice';
 import { generateId, getConversation, saveConversation } from './services/history';
 import type { Conversation, Message } from './services/history';
 import { startConversation, sendMessage } from './services/gemini';
-import type { ChatSession } from '@google/generative-ai';
+import type { ChatSession } from './services/gemini';
+
+// Lazy loaded components for code splitting
+const Home = lazy(() => import('./components/Home'));
+const ChatInput = lazy(() => import('./components/ChatInput'));
+const ConversationView = lazy(() => import('./components/Conversation'));
+const History = lazy(() => import('./components/History'));
 
 type AppState = "home" | "chat" | "history" | "help";
 
@@ -181,56 +183,60 @@ function App() {
       </div>
       
       <main className="flex-grow flex flex-col relative w-full h-full overflow-y-auto">
-        
-        {appState === "home" && (
-          <Home onSelectAction={handleHomeAction} />
-        )}
-
-        {appState === "history" && (
-          <HistoryView 
-            onSelectConversation={(id) => {
-              setActiveConversationId(id);
-              setAppState('chat');
-            }}
-            onHome={() => handleNavClick('home')}
-          />
-        )}
-
-        {appState === "help" && (
-          <div className="flex flex-col items-center justify-center flex-grow py-12 px-4 max-w-2xl mx-auto text-center animate-in fade-in">
-             <h2 className="text-3xl font-bold mb-6">Need Help?</h2>
-             <p className="text-lg text-gray-600 mb-4">
-               Simply Explain is designed to be as easy to use as possible.
-             </p>
-             <ul className="text-left bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 mb-8">
-               <li><strong>1.</strong> Go to the Home screen and select how you want to share information (Type, Upload, or Photo).</li>
-               <li><strong>2.</strong> The AI will explain the information simply in your selected language.</li>
-               <li><strong>3.</strong> You can ask follow-up questions using the text box or by tapping the microphone icon to speak.</li>
-             </ul>
-             <button onClick={() => handleNavClick('home')} className="btn btn-primary px-8 py-3">Got it</button>
+        <Suspense fallback={
+          <div className="flex flex-col items-center justify-center h-full w-full">
+            <div className="w-8 h-8 border-4 border-[#5AA9E6] border-t-transparent rounded-full animate-spin"></div>
           </div>
-        )}
+        }>
+          {appState === "home" && (
+            <Home onSelectAction={handleHomeAction} />
+          )}
 
-        {appState === "chat" && currentConversation && (
-          <div className="flex flex-col flex-grow w-full h-full justify-between">
-            {/* Scrollable Conversation Area */}
-            <div className="flex-grow overflow-y-auto">
-              <ConversationView 
-                messages={currentConversation.messages} 
-                language={language}
-                onQuickActionClick={handleQuickAction}
+          {appState === "history" && (
+            <History 
+              onSelectConversation={(id) => {
+                setActiveConversationId(id);
+                setAppState('chat');
+              }}
+              onHome={() => handleNavClick('home')}
+            />
+          )}
+
+          {appState === "help" && (
+            <div className="flex flex-col items-center justify-center flex-grow py-12 px-4 max-w-2xl mx-auto text-center animate-in fade-in">
+               <h2 className="text-3xl font-bold mb-6">Need Help?</h2>
+               <p className="text-lg text-gray-600 mb-4">
+                 Simply Explain is designed to be as easy to use as possible.
+               </p>
+               <ul className="text-left bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 mb-8">
+                 <li><strong>1.</strong> Go to the Home screen and select how you want to share information (Type, Upload, or Photo).</li>
+                 <li><strong>2.</strong> The AI will explain the information simply in your selected language.</li>
+                 <li><strong>3.</strong> You can ask follow-up questions using the text box or by tapping the microphone icon to speak.</li>
+               </ul>
+               <button onClick={() => handleNavClick('home')} className="btn btn-primary px-8 py-3">Got it</button>
+            </div>
+          )}
+
+          {appState === "chat" && currentConversation && (
+            <div className="flex flex-col flex-grow w-full h-full justify-between">
+              {/* Scrollable Conversation Area */}
+              <div className="flex-grow overflow-y-auto">
+                <ConversationView 
+                  messages={currentConversation.messages} 
+                  language={language}
+                  onQuickActionClick={handleQuickAction}
+                  isLoading={isLoading}
+                />
+              </div>
+              
+              {/* Sticky Input Area */}
+              <ChatInput 
+                onSend={handleSendMessage}
                 isLoading={isLoading}
               />
             </div>
-            
-            {/* Sticky Input Area */}
-            <ChatInput 
-              onSend={handleSendMessage}
-              isLoading={isLoading}
-            />
-          </div>
-        )}
-
+          )}
+        </Suspense>
       </main>
       
       {appState !== 'chat' && (
