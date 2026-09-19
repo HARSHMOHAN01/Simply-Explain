@@ -1,3 +1,6 @@
+import { collection, doc, setDoc, getDocs, getDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import { db } from "./firebase";
+
 export interface Message {
   id: string;
   role: 'user' | 'model';
@@ -17,55 +20,52 @@ export interface Conversation {
   updatedAt: number;
 }
 
-const STORAGE_KEY = 'simply_explain_history';
-
 export function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
-export function getConversations(): Conversation[] {
+export async function getConversations(): Promise<Conversation[]> {
   try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) return [];
-    const parsed = JSON.parse(data) as Conversation[];
-    // Sort descending by updated at
-    return parsed.sort((a, b) => b.updatedAt - a.updatedAt);
+    const q = query(collection(db, "conversations"), orderBy("updatedAt", "desc"));
+    const querySnapshot = await getDocs(q);
+    const conversations: Conversation[] = [];
+    querySnapshot.forEach((doc) => {
+      conversations.push(doc.data() as Conversation);
+    });
+    return conversations;
   } catch (error) {
-    console.error("Failed to load history", error);
+    console.error("Failed to load history from Firebase", error);
     return [];
   }
 }
 
-export function getConversation(id: string): Conversation | null {
-  const all = getConversations();
-  return all.find(c => c.id === id) || null;
-}
-
-export function saveConversation(conversation: Conversation): void {
+export async function getConversation(id: string): Promise<Conversation | null> {
   try {
-    const all = getConversations();
-    const existingIndex = all.findIndex(c => c.id === conversation.id);
-    
-    conversation.updatedAt = Date.now();
-    
-    if (existingIndex >= 0) {
-      all[existingIndex] = conversation;
-    } else {
-      all.push(conversation);
+    const docRef = doc(db, "conversations", id);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      return docSnap.data() as Conversation;
     }
-    
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    return null;
   } catch (error) {
-    console.error("Failed to save conversation", error);
+    console.error("Failed to fetch conversation", error);
+    return null;
   }
 }
 
-export function deleteConversation(id: string): void {
+export async function saveConversation(conversation: Conversation): Promise<void> {
   try {
-    const all = getConversations();
-    const filtered = all.filter(c => c.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    conversation.updatedAt = Date.now();
+    await setDoc(doc(db, "conversations", conversation.id), conversation);
   } catch (error) {
-    console.error("Failed to delete conversation", error);
+    console.error("Failed to save conversation to Firebase", error);
+  }
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, "conversations", id));
+  } catch (error) {
+    console.error("Failed to delete conversation from Firebase", error);
   }
 }

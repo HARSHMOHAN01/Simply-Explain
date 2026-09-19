@@ -27,12 +27,13 @@ function App() {
   // Load active conversation when ID changes
   useEffect(() => {
     if (activeConversationId) {
-      const conv = getConversation(activeConversationId);
-      if (conv) {
-        setCurrentConversation(conv);
-        // Initialize Gemini chat session with history
-        chatSessionRef.current = startConversation(language, conv.messages);
-      }
+      getConversation(activeConversationId).then(conv => {
+        if (conv) {
+          setCurrentConversation(conv);
+          // Initialize Gemini chat session with history
+          chatSessionRef.current = startConversation(language, conv.messages);
+        }
+      });
     } else {
       setCurrentConversation(null);
       chatSessionRef.current = null;
@@ -46,7 +47,7 @@ function App() {
     setAppState(view);
   };
 
-  const createNewConversation = (sourceType: 'write' | 'upload' | 'camera' | 'check', initialAttachment?: File) => {
+  const createNewConversation = async (sourceType: 'write' | 'upload' | 'camera' | 'check', initialAttachment?: File) => {
     const newConv: Conversation = {
       id: generateId(),
       title: "New Conversation", // Could generate dynamically based on first message later
@@ -57,7 +58,7 @@ function App() {
       updatedAt: Date.now()
     };
     
-    saveConversation(newConv);
+    await saveConversation(newConv);
     setActiveConversationId(newConv.id);
     setAppState('chat');
 
@@ -73,7 +74,7 @@ function App() {
         text: "Sure. Send me the message, text, photo or information you want me to check.",
         createdAt: Date.now()
       });
-      saveConversation(checkConv);
+      await saveConversation(checkConv);
       setCurrentConversation(checkConv);
     }
   };
@@ -123,7 +124,7 @@ function App() {
     }
 
     setCurrentConversation(updatedConv);
-    saveConversation(updatedConv);
+    await saveConversation(updatedConv);
 
     // 2. Call AI
     setIsLoading(true);
@@ -139,7 +140,7 @@ function App() {
 
       updatedConv = { ...updatedConv, messages: [...updatedConv.messages, modelMsg] };
       setCurrentConversation(updatedConv);
-      saveConversation(updatedConv);
+      await saveConversation(updatedConv);
     } catch (error: any) {
       const errorMsg: Message = {
         id: generateId(),
@@ -149,7 +150,7 @@ function App() {
       };
       updatedConv = { ...updatedConv, messages: [...updatedConv.messages, errorMsg] };
       setCurrentConversation(updatedConv);
-      saveConversation(updatedConv);
+      await saveConversation(updatedConv);
     } finally {
       setIsLoading(false);
     }

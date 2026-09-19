@@ -11,14 +11,14 @@ export default function History({ onSelectConversation, onHome }: HistoryProps) 
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
   useEffect(() => {
-    setConversations(getConversations());
+    getConversations().then(data => setConversations(data));
   }, []);
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (confirm("Are you sure you want to delete this conversation?")) {
-      deleteConversation(id);
-      setConversations(getConversations());
+      await deleteConversation(id);
+      getConversations().then(data => setConversations(data));
     }
   };
 
