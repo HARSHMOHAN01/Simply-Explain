@@ -18,12 +18,14 @@ function App() {
   const [textContent, setTextContent] = useState<string>("");
   const [photoContent, setPhotoContent] = useState<File | null>(null);
   const [result, setResult] = useState<ExtractedResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>("");
 
   const resetApp = () => {
     setAppState("home");
     setTextContent("");
     setPhotoContent(null);
     setResult(null);
+    setErrorMessage("");
   };
 
   const handleExplain = async () => {
@@ -35,8 +37,9 @@ function App() {
       const explanation = await explainContent(contentToExplain, selectedLanguage);
       setResult(explanation);
       setAppState("result");
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      setErrorMessage(error.message || "Unknown error occurred");
       setAppState("error");
     }
   };
@@ -159,7 +162,7 @@ function App() {
         )}
 
         {appState === "error" && (
-          <ErrorState onRetry={handleExplain} onHome={resetApp} />
+          <ErrorState onRetry={handleExplain} onHome={resetApp} message={errorMessage} />
         )}
       </main>
       
