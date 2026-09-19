@@ -28,7 +28,12 @@ export default function Conversation({ messages, language, onQuickActionClick, i
     }
     
     // Remove the QuickAction tags from the display text
-    const cleanText = text.replace(/\\[QuickAction:.*?\\]/g, '').trim();
+    let cleanText = text.replace(/\[QuickAction:.*?\]/g, '').trim();
+    
+    // Strip common markdown characters to ensure smooth plain text
+    cleanText = cleanText.replace(/[*_~`]/g, ''); // Remove bold, italics, strikethrough, inline code
+    cleanText = cleanText.replace(/^#+\s/gm, ''); // Remove header hashes
+    cleanText = cleanText.replace(/^---+\s*$/gm, ''); // Remove horizontal rules
     
     return { cleanText, quickActions };
   };
