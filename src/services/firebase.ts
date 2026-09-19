@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithRedirect, signOut } from "firebase/auth";
 
 // We use environment variables so you don't commit your secrets to GitHub
 const firebaseConfig = {
@@ -22,8 +22,8 @@ export const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = async () => {
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
+    await signInWithRedirect(auth, googleProvider);
+    // Note: User will be redirected. Auth state is handled by onAuthStateChanged in App.tsx
   } catch (error) {
     console.error("Error signing in with Google", error);
     throw error;
