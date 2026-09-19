@@ -1,17 +1,12 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { Part } from '@google/generative-ai';
+import type { Part, ChatSession } from '@google/generative-ai';
+import type { Message } from './history';
 
 // Replace these with your actual config or pass via .env
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "demo";
 
 const genAI = new GoogleGenerativeAI(apiKey);
 const GEMINI_MODEL_NAME = 'gemini-3.6-flash';
-
-export interface ExplanationResult {
-  summary: string;
-  actions: string[];
-  important: string;
-}
 
 const SYSTEM_INSTRUCTION = `You are Simply Explain, an AI assistant designed to help senior citizens
 understand complicated information.
@@ -38,90 +33,90 @@ Rules:
 5. If information is unclear, explicitly say that it is unclear.
 6. Break complicated information into short sections.
 7. Clearly explain what the user needs to do next when applicable.
-8. Respond in the language selected by the user.
-9. Keep the explanation concise.
-10. Do not overwhelm the user with unnecessary details.
-11. If the content involves medical, financial, legal, government or other important decisions, explain the content but remind the user to verify important decisions with an appropriate official source or qualified professional.
-12. Do not claim certainty when the source material is unclear.
+8. Keep the explanation concise.
+9. Do not overwhelm the user with unnecessary details.
+10. If the content involves medical, financial, legal, government or other important decisions, explain the content but remind the user to verify important decisions with an appropriate official source or qualified professional.
+11. Do not claim certainty when the source material is unclear.
+12. Be conversational, patient, and polite. Always act as a supportive companion.
 
-Format your response strictly as a JSON object matching this structure:
-{
-  "summary": "Simple Explanation",
-  "actions": ["Action 1", "Action 2"],
-  "important": "Important Things To Know (optional warning/verification message, or empty string)"
-}`;
+At the end of your explanation, offer 1 to 3 quick follow-up questions the user might want to ask.
+Format these suggested questions wrapped in brackets like this:
+[QuickAction: What proof do I need?]
+[QuickAction: How do I update it?]
+[QuickAction: Is there a deadline?]
 
-export async function explainContent(content: string | File, language: string): Promise<ExplanationResult> {
-  // Demo mode fallback if no real API key is provided
-  if (apiKey === "demo") {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          summary: `(Demo) This is a simplified explanation in ${language}. It looks like an electricity bill for ₹1,250.`,
-          actions: ["Check the amount.", "Pay before 25 September."],
-          important: "Please verify the due date with your bank."
-        });
-      }, 2000);
-    });
-  }
+These QuickActions will be converted into buttons for the user to tap. Do not include normal markdown links for these. Just the literal string [QuickAction: question here].`;
 
-  const model = genAI.getGenerativeModel({ 
-    model: GEMINI_MODEL_NAME,
-    systemInstruction: SYSTEM_INSTRUCTION,
-    generationConfig: {
-      responseMimeType: "application/json"
-    }
-  });
-
-  const prompt = `Selected language: ${language}\n\nPlease explain the provided content according to the system instructions.`;
-  
-  const requestParts: Part[] = [];
-
-  if (typeof content === 'string') {
-    requestParts.push({ text: prompt });
-    requestParts.push({ text: `Content to explain: ${content}` });
-  } else {
-    // Handle File (Image)
-    const base64Image = await fileToBase64(content);
-    requestParts.push({ text: prompt });
-    requestParts.push({
-      inlineData: {
-        data: base64Image.split(',')[1],
-        mimeType: content.type
-      }
-    });
-  }
-
-  try {
-    const result = await model.generateContent(requestParts);
-    
-    // Check if the response was blocked by safety settings
-    if (result.response.promptFeedback?.blockReason) {
-      throw new Error(`Blocked by safety settings: ${result.response.promptFeedback.blockReason}`);
-    }
-
-    const responseText = result.response.text();
-    // Sometimes the model still outputs markdown blocks even with responseMimeType
-    const cleanText = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
-    
-    const parsedResponse = JSON.parse(cleanText);
-    
-    return {
-      summary: parsedResponse.summary || "Explanation could not be generated.",
-      actions: parsedResponse.actions || [],
-      important: parsedResponse.important || ""
-    };
-  } catch (error: any) {
-    console.error("Gemini Error:", error);
-    throw new Error(error.message || "Failed to generate explanation");
-  }
-}
-
-function fileToBase64(file: File): Promise<string> {
+export async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = (error) => reject(error);
   });
+}
+
+// Convert our local Message format to Gemini's history format
+function convertToGeminiHistory(messages: Message[]) {
+  return messages.map(msg => {
+    const parts: Part[] = [];
+    if (msg.text) {
+      parts.push({ text: msg.text });
+    }
+    // Note: In a real advanced implementation we would also re-hydrate base64 images into history,
+    // but typically we pass the main context in the first message.
+    return {
+      role: msg.role === 'model' ? 'model' : 'user',
+      parts
+    };
+  });
+}
+
+export function startConversation(language: string, history: Message[] = []): ChatSession {
+  const model = genAI.getGenerativeModel({ 
+    model: GEMINI_MODEL_NAME,
+    systemInstruction: SYSTEM_INSTRUCTION + `\n\nIMPORTANT: You must respond entirely in this language: ${language}`
+  });
+
+  return model.startChat({
+    history: convertToGeminiHistory(history),
+  });
+}
+
+export async function sendMessage(chat: ChatSession, text: string, attachment?: File): Promise<string> {
+  if (apiKey === "demo") {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(`This is a demo response from the AI. I received your message: "${text}".\n\n[QuickAction: Tell me more]\n[QuickAction: What's next?]`);
+      }, 1500);
+    });
+  }
+
+  try {
+    const parts: Part[] = [];
+    if (attachment) {
+      const base64Image = await fileToBase64(attachment);
+      parts.push({
+        inlineData: {
+          data: base64Image.split(',')[1],
+          mimeType: attachment.type
+        }
+      });
+    }
+    
+    if (text) {
+      parts.push({ text });
+    }
+
+    const result = await chat.sendMessage(parts);
+    
+    if (result.response.promptFeedback?.blockReason) {
+      throw new Error(`Blocked by safety settings: ${result.response.promptFeedback.blockReason}`);
+    }
+
+    return result.response.text();
+  } catch (error: any) {
+    console.error("Gemini Error:", error);
+    throw new Error(error.message || "Failed to communicate with AI");
+  }
 }

@@ -1,174 +1,242 @@
-import { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Header from './components/Header';
-import PhotoInput from './components/PhotoInput';
-import TextInput from './components/TextInput';
-import LanguageSelector from './components/LanguageSelector';
-import ProcessingState from './components/ProcessingState';
-import ExplanationResult from './components/ExplanationResult';
-import ErrorState from './components/ErrorState';
+import Home from './components/Home';
+import ConversationView from './components/Conversation';
+import ChatInput from './components/ChatInput';
+import HistoryView from './components/History';
 import SafetyNotice from './components/SafetyNotice';
-import type { ExplanationResult as ExtractedResult } from './services/gemini';
-import { explainContent } from './services/gemini';
+import { generateId, getConversation, saveConversation } from './services/history';
+import type { Conversation, Message } from './services/history';
+import { startConversation, sendMessage } from './services/gemini';
+import type { ChatSession } from '@google/generative-ai';
 
-type AppState = "home" | "photo" | "text" | "review" | "processing" | "result" | "error";
+type AppState = "home" | "chat" | "history" | "help";
 
 function App() {
   const [appState, setAppState] = useState<AppState>("home");
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("English");
-  const [textContent, setTextContent] = useState<string>("");
-  const [photoContent, setPhotoContent] = useState<File | null>(null);
-  const [result, setResult] = useState<ExtractedResult | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [language, setLanguage] = useState<string>("English");
+  
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  const chatSessionRef = useRef<ChatSession | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingSourceType, setPendingSourceType] = useState<'upload' | 'camera' | null>(null);
 
-  const resetApp = () => {
-    setAppState("home");
-    setTextContent("");
-    setPhotoContent(null);
-    setResult(null);
-    setErrorMessage("");
+  // Load active conversation when ID changes
+  useEffect(() => {
+    if (activeConversationId) {
+      const conv = getConversation(activeConversationId);
+      if (conv) {
+        setCurrentConversation(conv);
+        // Initialize Gemini chat session with history
+        chatSessionRef.current = startConversation(language, conv.messages);
+      }
+    } else {
+      setCurrentConversation(null);
+      chatSessionRef.current = null;
+    }
+  }, [activeConversationId, language]);
+
+  const handleNavClick = (view: AppState) => {
+    if (view === 'home') {
+      setActiveConversationId(null);
+    }
+    setAppState(view);
   };
 
-  const handleExplain = async () => {
-    if (!textContent && !photoContent) return;
+  const createNewConversation = (sourceType: 'write' | 'upload' | 'camera' | 'check', initialAttachment?: File) => {
+    const newConv: Conversation = {
+      id: generateId(),
+      title: "New Conversation", // Could generate dynamically based on first message later
+      sourceType,
+      language,
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
     
-    setAppState("processing");
-    try {
-      const contentToExplain = photoContent ? photoContent : textContent;
-      const explanation = await explainContent(contentToExplain, selectedLanguage);
-      setResult(explanation);
-      setAppState("result");
-    } catch (error: any) {
-      console.error(error);
-      setErrorMessage(error.message || "Unknown error occurred");
-      setAppState("error");
+    saveConversation(newConv);
+    setActiveConversationId(newConv.id);
+    setAppState('chat');
+
+    // If there's an initial attachment (from Upload/Camera), send it immediately
+    if (initialAttachment) {
+      handleSendMessage("Can you explain this document for me?", initialAttachment);
+    } else if (sourceType === 'check') {
+      // Add an initial greeting message for 'check'
+      const checkConv = { ...newConv };
+      checkConv.messages.push({
+        id: generateId(),
+        role: 'model',
+        text: "Sure. Send me the message, text, photo or information you want me to check.",
+        createdAt: Date.now()
+      });
+      saveConversation(checkConv);
+      setCurrentConversation(checkConv);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-white text-black p-6 md:p-12 max-w-3xl mx-auto flex flex-col">
-      <Header onHomeClick={resetApp} />
+  const handleHomeAction = (sourceType: 'write' | 'upload' | 'camera' | 'check') => {
+    if (sourceType === 'upload' || sourceType === 'camera') {
+      setPendingSourceType(sourceType);
+      if (fileInputRef.current) {
+        fileInputRef.current.removeAttribute('capture');
+        if (sourceType === 'camera') {
+          fileInputRef.current.setAttribute('capture', 'environment');
+        }
+        fileInputRef.current.click();
+      }
+    } else {
+      createNewConversation(sourceType);
+    }
+  };
+
+  const handleGlobalFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && pendingSourceType) {
+      const file = e.target.files[0];
+      createNewConversation(pendingSourceType, file);
+    }
+    setPendingSourceType(null);
+    if (fileInputRef.current) fileInputRef.current.value = ""; // Reset
+  };
+
+  const handleSendMessage = async (text: string, file?: File) => {
+    if (!currentConversation || !chatSessionRef.current) return;
+
+    // 1. Add User Message
+    const userMsg: Message = {
+      id: generateId(),
+      role: 'user',
+      text: text,
+      attachmentUrl: file ? URL.createObjectURL(file) : undefined, // Quick preview
+      createdAt: Date.now()
+    };
+
+    let updatedConv = { ...currentConversation };
+    updatedConv.messages = [...updatedConv.messages, userMsg];
+    
+    // Auto-generate title if first user message
+    if (updatedConv.messages.length <= 2 && updatedConv.title === "New Conversation") {
+      updatedConv.title = file ? file.name : (text.substring(0, 30) + (text.length > 30 ? "..." : ""));
+    }
+
+    setCurrentConversation(updatedConv);
+    saveConversation(updatedConv);
+
+    // 2. Call AI
+    setIsLoading(true);
+    try {
+      const responseText = await sendMessage(chatSessionRef.current, text, file);
       
-      <main className="flex-grow flex flex-col pt-8">
+      const modelMsg: Message = {
+        id: generateId(),
+        role: 'model',
+        text: responseText,
+        createdAt: Date.now()
+      };
+
+      updatedConv = { ...updatedConv, messages: [...updatedConv.messages, modelMsg] };
+      setCurrentConversation(updatedConv);
+      saveConversation(updatedConv);
+    } catch (error: any) {
+      const errorMsg: Message = {
+        id: generateId(),
+        role: 'model',
+        text: `I couldn't process that right now. (${error.message || "Unknown error"})`,
+        createdAt: Date.now()
+      };
+      updatedConv = { ...updatedConv, messages: [...updatedConv.messages, errorMsg] };
+      setCurrentConversation(updatedConv);
+      saveConversation(updatedConv);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQuickAction = (actionText: string) => {
+    handleSendMessage(actionText);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F9F9F9] text-[#1a1a1a] flex flex-col font-sans">
+      
+      {/* Hidden global file input for Home actions */}
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleGlobalFileChange} 
+        className="hidden" 
+        accept="image/*,.pdf,.doc,.docx,.txt"
+      />
+
+      <div className="max-w-7xl mx-auto w-full px-4 md:px-8 flex-shrink-0">
+        <Header 
+          onNavClick={handleNavClick} 
+          language={language} 
+          onLanguageChange={setLanguage} 
+        />
+      </div>
+      
+      <main className="flex-grow flex flex-col relative w-full h-full overflow-y-auto">
+        
         {appState === "home" && (
-          <div className="flex flex-col gap-6 animate-in fade-in">
-            <div>
-              <h1 className="text-4xl font-bold mb-2">What would you like to understand today?</h1>
-              <p className="text-xl text-gray-600">Take a photo or type something you want us to explain.</p>
-            </div>
-            
-            <button 
-              className="card flex flex-col items-start gap-4"
-              onClick={() => setAppState("photo")}
-            >
-              <span className="text-5xl" aria-hidden="true">📷</span>
-              <div>
-                <h2 className="text-2xl font-bold">Take or Upload a Photo</h2>
-                <p className="text-gray-600 text-lg">Upload a document, bill, letter, form, message or notice.</p>
-              </div>
-              <div className="mt-4 font-bold text-lg text-black bg-gray-100 px-4 py-2 rounded-lg">Choose Photo</div>
-            </button>
+          <Home onSelectAction={handleHomeAction} />
+        )}
 
-            <button 
-              className="card flex flex-col items-start gap-4"
-              onClick={() => setAppState("text")}
-            >
-              <span className="text-5xl" aria-hidden="true">✍️</span>
-              <div>
-                <h2 className="text-2xl font-bold">Type or Paste Text</h2>
-                <p className="text-gray-600 text-lg">Enter anything you want explained.</p>
-              </div>
-              <div className="mt-4 font-bold text-lg text-black bg-gray-100 px-4 py-2 rounded-lg">Enter Text</div>
-            </button>
+        {appState === "history" && (
+          <HistoryView 
+            onSelectConversation={(id) => {
+              setActiveConversationId(id);
+              setAppState('chat');
+            }}
+            onHome={() => handleNavClick('home')}
+          />
+        )}
+
+        {appState === "help" && (
+          <div className="flex flex-col items-center justify-center flex-grow py-12 px-4 max-w-2xl mx-auto text-center animate-in fade-in">
+             <h2 className="text-3xl font-bold mb-6">Need Help?</h2>
+             <p className="text-lg text-gray-600 mb-4">
+               Simply Explain is designed to be as easy to use as possible.
+             </p>
+             <ul className="text-left bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4 mb-8">
+               <li><strong>1.</strong> Go to the Home screen and select how you want to share information (Type, Upload, or Photo).</li>
+               <li><strong>2.</strong> The AI will explain the information simply in your selected language.</li>
+               <li><strong>3.</strong> You can ask follow-up questions using the text box or by tapping the microphone icon to speak.</li>
+             </ul>
+             <button onClick={() => handleNavClick('home')} className="btn btn-primary px-8 py-3">Got it</button>
           </div>
         )}
 
-        {appState === "photo" && (
-          <div className="animate-in fade-in flex flex-col flex-grow">
-            <PhotoInput 
-              onPhotoSelected={(file) => {
-                setPhotoContent(file);
-                setAppState("review");
-              }}
-              onCancel={resetApp}
-            />
-          </div>
-        )}
-
-        {appState === "text" && (
-          <div className="animate-in fade-in flex flex-col flex-grow">
-            <TextInput 
-              initialText={textContent}
-              onTextSubmitted={(text) => {
-                setTextContent(text);
-                setAppState("review");
-              }}
-              onCancel={resetApp}
-            />
-          </div>
-        )}
-
-        {appState === "review" && (
-          <div className="animate-in fade-in flex flex-col gap-8 flex-grow">
-            <div>
-              <h2 className="text-3xl font-bold mb-6">Explain it in</h2>
-              <LanguageSelector 
-                selectedLanguage={selectedLanguage}
-                onLanguageChange={setSelectedLanguage}
+        {appState === "chat" && currentConversation && (
+          <div className="flex flex-col flex-grow w-full h-full justify-between">
+            {/* Scrollable Conversation Area */}
+            <div className="flex-grow overflow-y-auto">
+              <ConversationView 
+                messages={currentConversation.messages} 
+                language={language}
+                onQuickActionClick={handleQuickAction}
+                isLoading={isLoading}
               />
             </div>
             
-            <div className="mt-auto pt-8 flex flex-col gap-4">
-              <button 
-                className="btn btn-primary w-full py-6 text-2xl font-bold"
-                onClick={handleExplain}
-              >
-                ✨ Explain Simply
-              </button>
-              <button 
-                className="btn btn-secondary w-full"
-                onClick={() => setAppState(photoContent ? "photo" : "text")}
-              >
-                ← Go Back
-              </button>
-            </div>
-          </div>
-        )}
-
-        {appState === "processing" && (
-          <ProcessingState />
-        )}
-
-        {appState === "result" && result && (
-          <div className="animate-in fade-in flex flex-col flex-grow">
-            <ExplanationResult 
-              result={result} 
-              language={selectedLanguage}
+            {/* Sticky Input Area */}
+            <ChatInput 
+              onSend={handleSendMessage}
+              isLoading={isLoading}
             />
-            <div className="mt-12 flex flex-col gap-4 border-t-2 border-gray-100 pt-8">
-              <button 
-                className="btn btn-primary w-full py-5 text-xl font-bold"
-                onClick={handleExplain}
-              >
-                ↻ Explain Again
-              </button>
-              <button 
-                className="btn btn-secondary w-full py-4 text-xl font-bold"
-                onClick={resetApp}
-              >
-                ← Start Over
-              </button>
-            </div>
           </div>
         )}
 
-        {appState === "error" && (
-          <ErrorState onRetry={handleExplain} onHome={resetApp} message={errorMessage} />
-        )}
       </main>
       
-      <footer className="mt-12 pt-8">
-        <SafetyNotice />
-      </footer>
+      {appState !== 'chat' && (
+        <footer className="mt-auto py-8">
+          <SafetyNotice />
+        </footer>
+      )}
     </div>
   );
 }
