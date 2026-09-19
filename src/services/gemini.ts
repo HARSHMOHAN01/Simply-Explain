@@ -5,7 +5,7 @@ import type { Part } from '@google/generative-ai';
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "demo";
 
 const genAI = new GoogleGenerativeAI(apiKey);
-const GEMINI_MODEL_NAME = 'gemini-2.5-flash';
+const GEMINI_MODEL_NAME = 'gemini-3.6-flash';
 
 export interface ExplanationResult {
   summary: string;
