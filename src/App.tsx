@@ -31,7 +31,15 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
+    import('firebase/auth').then(({ getRedirectResult }) => {
+      getRedirectResult(auth).catch(error => {
+        console.error("Redirect auth error:", error);
+        alert("Login failed: " + error.message);
+      });
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      console.log("Auth state changed:", currentUser?.email);
       setUser(currentUser);
     });
     return () => unsubscribe();
