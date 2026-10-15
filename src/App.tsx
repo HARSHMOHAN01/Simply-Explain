@@ -121,6 +121,19 @@ function App() {
     // If there's an initial attachment (from Upload/Camera), send it immediately
     if (initialAttachment) {
       handleSendMessage("Can you explain this document for me?", initialAttachment, newConv, newSession);
+    } else if (sourceType === 'write') {
+      // Add an initial greeting message for 'write'
+      const writeConv = { ...newConv };
+      writeConv.messages.push({
+        id: generateId(),
+        role: 'model',
+        text: "Hello! I am Simply Explain. Please type or paste whatever you would like me to explain simply.",
+        createdAt: Date.now()
+      });
+      if (user) {
+        await saveConversation(writeConv);
+      }
+      setCurrentConversation(writeConv);
     } else if (sourceType === 'check') {
       // Add an initial greeting message for 'check'
       const checkConv = { ...newConv };
@@ -254,7 +267,7 @@ function App() {
           </div>
         }>
           {appState === "home" && (
-            <Home onSelectAction={handleHomeAction} />
+            <Home onSelectAction={handleHomeAction} user={user} />
           )}
 
           {appState === "history" && (

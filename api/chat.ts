@@ -67,8 +67,21 @@ IMPORTANT: You must respond entirely in this language: ${language || 'English'}`
       systemInstruction: SYSTEM_INSTRUCTION
     });
 
-    const chatSession = model.startChat({
-      history: history || [],
+    // Sanitize history so it strictly starts with user and alternates
+    const sanitizedHistory: any[] = [];
+    let expecting = 'user';
+    for (const item of (history || [])) {
+      if (item.role === expecting) {
+        sanitizedHistory.push(item);
+        expecting = expecting === 'user' ? 'model' : 'user';
+      }
+    }
+    if (sanitizedHistory.length > 0 && sanitizedHistory[sanitizedHistory.length - 1].role === 'user') {
+      sanitizedHistory.pop();
+    }
+
+    const chatSession = model.startChat({ 
+      history: sanitizedHistory,
     });
 
     const parts: any[] = [];

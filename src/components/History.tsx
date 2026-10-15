@@ -11,12 +11,17 @@ interface HistoryProps {
 
 export default function History({ onSelectConversation, onHome, user }: HistoryProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
-      getConversations(user.uid).then(data => setConversations(data));
+      setLoading(true);
+      getConversations(user.uid)
+        .then(data => setConversations(data))
+        .finally(() => setLoading(false));
     } else {
       setConversations([]);
+      setLoading(false);
     }
   }, [user]);
 
@@ -35,6 +40,15 @@ export default function History({ onSelectConversation, onHome, user }: HistoryP
     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center flex-grow py-16 px-4 w-full animate-in fade-in text-center">
+        <div className="w-10 h-10 border-4 border-[#5AA9E6] border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p className="text-gray-600 font-medium text-lg">Loading your saved conversations...</p>
+      </div>
+    );
+  }
+
   if (conversations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center flex-grow py-12 px-4 w-full animate-in fade-in text-center">
@@ -43,7 +57,7 @@ export default function History({ onSelectConversation, onHome, user }: HistoryP
         </div>
         <h2 className="text-3xl font-bold mb-4">Your conversations will appear here.</h2>
         <p className="text-xl text-gray-600 mb-8 max-w-md">
-          Start by giving Simply Explain something to understand.
+          {user ? "You haven't saved any conversations yet. Start one now!" : "Sign in to save and sync your conversations across all your devices."}
         </p>
         <button 
           onClick={onHome}

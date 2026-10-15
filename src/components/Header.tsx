@@ -69,11 +69,32 @@ export default function Header({ onNavClick, language, onLanguageChange, user, o
         {/* Auth Section */}
         <div className="ml-2 pl-2 border-l border-gray-200 flex items-center gap-3">
           {user ? (
-            <div className="flex items-center gap-3">
-              <img src={user.photoURL || 'https://via.placeholder.com/32'} alt="Profile" className="w-8 h-8 rounded-full border border-gray-200" />
+            <div className="flex items-center gap-2.5 bg-gray-50 py-1 px-3 rounded-full border border-gray-200 shadow-sm">
+              {user.photoURL ? (
+                <img 
+                  src={user.photoURL} 
+                  alt="Profile" 
+                  className="w-8 h-8 rounded-full border border-gray-300 object-cover" 
+                  onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#5AA9E6] text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                  {(user.displayName?.[0] || user.email?.[0] || 'U').toUpperCase()}
+                </div>
+              )}
+              <div className="hidden sm:flex flex-col text-left">
+                <span className="text-sm font-bold text-gray-800 leading-tight truncate max-w-[120px]">
+                  {user.displayName || user.email?.split('@')[0]}
+                </span>
+                <span className="text-[11px] text-green-600 font-semibold flex items-center gap-1 leading-none">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                  Active
+                </span>
+              </div>
               <button 
                 onClick={onLogout}
-                className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
+                className="text-xs font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 py-1 px-2 rounded-full transition-colors ml-1"
+                title="Sign out"
               >
                 Logout
               </button>

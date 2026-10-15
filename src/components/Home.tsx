@@ -1,13 +1,22 @@
 
+import type { User } from 'firebase/auth';
+
 interface HomeProps {
   onSelectAction: (sourceType: 'write' | 'upload' | 'camera' | 'check') => void;
+  user?: User | null;
 }
 
-export default function Home({ onSelectAction }: HomeProps) {
+export default function Home({ onSelectAction, user }: HomeProps) {
   return (
     <div className="flex flex-col items-center justify-center flex-grow py-8 px-4 w-full animate-in fade-in">
       
-      <div className="text-center mb-12 max-w-2xl">
+      <div className="text-center mb-10 max-w-2xl">
+        {user && (
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-50 border border-blue-100 text-[#006397] mb-4 font-semibold text-sm">
+            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+            Welcome back, {user.displayName || user.email?.split('@')[0]}! Your history is synced.
+          </div>
+        )}
         <h1 className="text-4xl md:text-5xl font-bold mb-4 text-[#1a1a1a]">
           Understand anything.<br />
           Know what to do next.

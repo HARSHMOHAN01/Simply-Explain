@@ -8,10 +8,13 @@ import {
   signOut 
 } from "firebase/auth";
 
-// We use environment variables so you don't commit your secrets to GitHub
+// On Vercel, when vercel.json proxies /__/auth, using window.location.hostname avoids cross-origin storage partitioning issues
+const isVercel = typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app');
+const resolvedAuthDomain = isVercel ? window.location.hostname : (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "simply-explain.firebaseapp.com");
+
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  authDomain: resolvedAuthDomain,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
