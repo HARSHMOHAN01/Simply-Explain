@@ -26,7 +26,7 @@ export function generateId(): string {
 }
 
 export async function getConversations(userId: string): Promise<Conversation[]> {
-  if (!userId) return [];
+  if (!userId || userId === 'guest') return [];
   try {
     const q = query(
       collection(db, "conversations"), 
@@ -60,7 +60,7 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 }
 
 export async function saveConversation(conversation: Conversation): Promise<void> {
-  if (!conversation.userId) return; // Prevent saving orphaned data
+  if (!conversation.userId || conversation.userId === 'guest') return; // Prevent saving guest data to Firestore
   try {
     conversation.updatedAt = Date.now();
     await setDoc(doc(db, "conversations", conversation.id), conversation);

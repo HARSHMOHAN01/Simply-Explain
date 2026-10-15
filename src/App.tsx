@@ -6,7 +6,7 @@ import type { Conversation, Message } from './services/history';
 import { startConversation, sendMessage } from './services/gemini';
 import type { ChatSession } from './services/gemini';
 import { auth, signInWithGoogle, logOut } from './services/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 
 // Lazy loaded components for code splitting
@@ -31,12 +31,17 @@ function App() {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    import('firebase/auth').then(({ getRedirectResult }) => {
-      getRedirectResult(auth).catch(error => {
+    // Process redirect result if arriving from an OAuth redirect
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          console.log("Redirect login successful:", result.user.email);
+          setUser(result.user);
+        }
+      })
+      .catch((error) => {
         console.error("Redirect auth error:", error);
-        alert("Login failed: " + error.message);
       });
-    });
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       console.log("Auth state changed:", currentUser?.email);
@@ -68,21 +73,32 @@ function App() {
     setAppState(view);
   };
 
-  const createNewConversation = async (sourceType: 'write' | 'upload' | 'camera' | 'check', initialAttachment?: File) => {
-    if (!user) {
-      alert("Please sign in first to save your conversation.");
-      try {
-        await signInWithGoogle();
-        // Return early so user can click again, or we could continue the flow
-        return;
-      } catch (e) {
-        return;
+  const handleLogin = async () => {
+    try {
+      const loggedUser = await signInWithGoogle();
+      if (loggedUser) {
+        setUser(loggedUser);
       }
+    } catch (error) {
+      console.error("Login failed:", error);
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logOut();
+      setUser(null);
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
+  };
+
+  const createNewConversation = async (sourceType: 'write' | 'upload' | 'camera' | 'check', initialAttachment?: File) => {
+    const currentUserId = user ? user.uid : "guest";
 
     const newConv: Conversation = {
       id: generateId(),
-      userId: user.uid,
+      userId: currentUserId,
       title: "New Conversation", // Could generate dynamically based on first message later
       sourceType,
       language,
@@ -91,7 +107,9 @@ function App() {
       updatedAt: Date.now()
     };
     
-    await saveConversation(newConv);
+    if (user) {
+      await saveConversation(newConv);
+    }
     
     // Set synchronous context for immediate use
     const newSession = startConversation(language, newConv.messages);
@@ -112,7 +130,9 @@ function App() {
         text: "Sure. Send me the message, text, photo or information you want me to check.",
         createdAt: Date.now()
       });
-      await saveConversation(checkConv);
+      if (user) {
+        await saveConversation(checkConv);
+      }
       setCurrentConversation(checkConv);
     }
   };
@@ -222,8 +242,8 @@ function App() {
           language={language} 
           onLanguageChange={setLanguage} 
           user={user}
-          onLogin={signInWithGoogle}
-          onLogout={logOut}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
         />
       </div>
       

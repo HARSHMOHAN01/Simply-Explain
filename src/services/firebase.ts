@@ -1,6 +1,12 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth, GoogleAuthProvider, signInWithRedirect, signOut } from "firebase/auth";
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithRedirect, 
+  signOut 
+} from "firebase/auth";
 
 // We use environment variables so you don't commit your secrets to GitHub
 const firebaseConfig = {
@@ -19,13 +25,44 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
 
 export const signInWithGoogle = async () => {
+  console.log("signInWithGoogle invoked!");
   try {
-    await signInWithRedirect(auth, googleProvider);
-    // Note: User will be redirected. Auth state is handled by onAuthStateChanged in App.tsx
-  } catch (error) {
-    console.error("Error signing in with Google", error);
+    // Primary flow: popup (reliable on modern browsers, no cross-origin storage issues)
+    const result = await signInWithPopup(auth, googleProvider);
+    console.log("signInWithPopup success:", result.user?.email);
+    return result.user;
+  } catch (error: any) {
+    console.error("Google Sign-In Error:", error);
+
+    // If popup was blocked by browser, attempt redirect fallback
+    if (error?.code === 'auth/popup-blocked') {
+      try {
+        await signInWithRedirect(auth, googleProvider);
+        return null;
+      } catch (redirectError) {
+        console.error("Redirect sign-in error after popup blocked:", redirectError);
+        throw redirectError;
+      }
+    }
+
+    // User closed popup without signing in
+    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+      return null;
+    }
+
+    // Domain unauthorized in Firebase Console
+    if (error?.code === 'auth/unauthorized-domain') {
+      const currentDomain = window.location.hostname;
+      alert(`Firebase Auth Error: Domain "${currentDomain}" is not authorized.\n\nPlease add "${currentDomain}" to Authorized Domains in your Firebase Console (Authentication -> Settings -> Authorized Domains).`);
+      return null;
+    }
+
+    alert(`Sign-in could not be completed: ${error.message || 'Unknown error'}`);
     throw error;
   }
 };
@@ -37,3 +74,10 @@ export const logOut = async () => {
     console.error("Error signing out", error);
   }
 };
+
+if (typeof window !== 'undefined') {
+  (window as any).signInWithGoogle = signInWithGoogle;
+  (window as any).firebaseAuth = auth;
+}
+
+
